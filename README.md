@@ -138,27 +138,3 @@ pip install -e ".[dev]"
 pytest tests/models -q
 ```
 
-## Publish to PyPI
-
-CI runs on every push/PR to `main`. Publishing is triggered by pushing a version tag.
-
-### One-time PyPI setup
-
-1. Create a project on [PyPI](https://pypi.org/) named `respeak`.
-2. In PyPI → **Publishing** → **Add a new pending publisher**:
-   - Owner: `shanguanma`
-   - Repository: `respeak`
-   - Workflow: `publish-pypi.yml`
-   - Environment: `pypi`
-
-### Release flow
-
-```bash
-# 1. Bump version in pyproject.toml
-# 2. Commit and tag
-git tag v0.1.1
-git push origin main
-git push origin v0.1.1
-```
-
-The tag must match `pyproject.toml` (`v0.1.1` ↔ `version = "0.1.1"`).
