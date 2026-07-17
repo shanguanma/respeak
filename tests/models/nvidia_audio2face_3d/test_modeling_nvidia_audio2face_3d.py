@@ -16,6 +16,9 @@ from respeak.models.nvidia_audio2face_3d.a2f_engine import A2FEngine
 from respeak.models.nvidia_audio2face_3d.modeling_nvidia_audio2face_3d import (
     NvidiaAudio2Face3D as NvidiaAudio2Face3DModel,
 )
+from respeak.models.nvidia_audio2face_3d.ue5_blendshape_renderer import (
+    Ue5BlendshapeRenderer,
+)
 from tests.test_modeling_common import ModelTesterMixin
 
 _NUM_POSES = 51
@@ -166,7 +169,7 @@ class NvidiaAudio2Face3DModelTester:
         model: NvidiaAudio2Face3D,
         inputs_dict: dict[str, Any],
     ) -> np.ndarray:
-        weights = model.generate(**inputs_dict)
+        weights = model.generate(**inputs_dict, return_audio=False)
         self.parent.assertIsInstance(weights, np.ndarray)
         self.parent.assertEqual(weights.shape, (self.num_poses,))
         model._engine.process_audio_chunk.assert_called_once()
@@ -198,20 +201,44 @@ class NvidiaAudio2Face3DModelTest(ModelTesterMixin, unittest.TestCase):
         model = self.model_tester.get_model()
         out = model.generate(np.zeros(_BUFFER_LEN, dtype=np.float32), return_dict=True)
         self.assertIn("arkit_weights", out)
+        self.assertIn("audio", out)
         self.assertIn("pose_names", out)
         self.assertEqual(len(out["pose_names"]), _NUM_POSES)
+        self.assertEqual(out["audio"].shape[0], model.step_samples)
+
+    def test_generate_synced_audio_stream(self):
+        model = self.model_tester.get_model()
+        audio = np.linspace(-0.2, 0.2, 16000, dtype=np.float32)
+        frames = model.generate(audio, stream=True, is_final=True)
+        self.assertGreater(len(frames), 0)
+        self.assertIsInstance(frames[0], dict)
+        self.assertIn("audio", frames[0])
+        self.assertIn("arkit_weights", frames[0])
+        self.assertEqual(frames[0]["audio"].shape[0], model.step_samples)
+        self.assertEqual(frames[0]["arkit_weights"].shape[0], _NUM_POSES)
+        synced = np.concatenate([frame["audio"] for frame in frames], axis=0)
+        self.assertGreater(float(np.abs(synced).max()), 0.0)
+
+    def test_generate_stream_return_dict(self):
+        model = self.model_tester.get_model()
+        audio = np.zeros(8000, dtype=np.float32)
+        out = model.generate(audio, stream=True, is_final=True, return_dict=True)
+        self.assertIn("frames", out)
+        self.assertIn("audio", out)
+        self.assertIn("arkit_weights", out)
+        self.assertEqual(out["audio"].shape[0], len(out["frames"]) * model.step_samples)
 
     def test_generate_pad_to(self):
         model = self.model_tester.get_model()
-        weights = model.generate(np.zeros(_BUFFER_LEN, dtype=np.float32), pad_to=61)
-        self.assertEqual(weights.shape, (61,))
-        self.assertTrue(np.all(weights[51:] == 0.0))
+        out = model.generate(np.zeros(_BUFFER_LEN, dtype=np.float32), pad_to=61)
+        self.assertIsInstance(out, dict)
+        self.assertEqual(out["arkit_weights"].shape, (61,))
+        self.assertTrue(np.all(out["arkit_weights"][51:] == 0.0))
 
     def test_generate_stream(self):
         model = self.model_tester.get_model()
-        # ~1s of audio at 16 kHz
         audio = np.zeros(16000, dtype=np.float32)
-        frames = model.generate(audio, stream=True, is_final=True)
+        frames = model.generate(audio, stream=True, is_final=True, return_audio=False)
         self.assertIsInstance(frames, list)
         self.assertGreater(len(frames), 0)
         self.assertEqual(frames[0].shape, (_NUM_POSES,))
@@ -240,6 +267,7 @@ class A2FEngineTinyModelTest(unittest.TestCase):
             fake_ort = MagicMock()
             fake_ort.SessionOptions.return_value = MagicMock()
             fake_ort.GraphOptimizationLevel.ORT_ENABLE_ALL = 99
+            fake_ort.get_available_providers.return_value = ["CPUExecutionProvider"]
             fake_ort.InferenceSession.return_value = _FakeOrtSession()
 
             with patch.dict("sys.modules", {"onnxruntime": fake_ort}):
@@ -258,6 +286,50 @@ class A2FEngineTinyModelTest(unittest.TestCase):
             self.assertTrue(np.all(result["arkit_weights"] <= 1.0))
             self.assertEqual(len(engine.get_arkit_pose_names()), _NUM_POSES)
             self.assertIn("timing", result)
+
+
+class Ue5BlendshapeRendererTest(unittest.TestCase):
+    def test_pack_message_prefix(self):
+        payload = b"hello"
+        packed = Ue5BlendshapeRenderer.pack_message(payload)
+        self.assertEqual(len(packed), 8 + len(payload))
+        self.assertEqual(int.from_bytes(packed[:8], "big"), len(payload))
+
+    def test_to_55_weights_from_51(self):
+        weights = np.ones(51, dtype=np.float32)
+        out = Ue5BlendshapeRenderer.to_55_weights(
+            Ue5BlendshapeRenderer.to_61_weights(weights)
+        )
+        self.assertEqual(out.shape, (55,))
+        self.assertEqual(float(out[0]), 1.0)
+
+    def test_build_frame_payload_json(self):
+        renderer = Ue5BlendshapeRenderer(output_fps=25)
+        payload = renderer.build_frame_payload(np.ones(51, dtype=np.float32))
+        data = json.loads(payload)
+        self.assertIn("Audio2Face", data)
+        self.assertEqual(len(data["Audio2Face"]["Facial"]["Names"]), 55)
+
+    def test_stream_frames_with_fake_socket(self):
+        class FakeSocket:
+            def __init__(self) -> None:
+                self.sent: list[bytes] = []
+
+            def sendall(self, data: bytes) -> None:
+                self.sent.append(data)
+
+            def close(self) -> None:
+                return None
+
+        renderer = Ue5BlendshapeRenderer(output_fps=25)
+        renderer._socket = FakeSocket()
+        sent = renderer.stream_frames(
+            [{"arkit_weights": np.zeros(51, dtype=np.float32)}],
+            realtime=False,
+        )
+        self.assertEqual(sent, 1)
+        assert renderer._socket is not None
+        self.assertEqual(len(renderer._socket.sent), 2)
 
 
 if __name__ == "__main__":

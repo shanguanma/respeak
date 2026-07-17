@@ -18,6 +18,7 @@ pip install "respeak-ai[vad]"
 pip install "respeak-ai[tts]"
 pip install "respeak-ai[llm]"
 pip install "respeak-ai[a2f]"
+pip install "respeak-ai[a2f-trt]"   # Audio2Face + TensorRT (faster ONNX EP)
 pip install "respeak-ai[dev]"
 ```
 
@@ -90,8 +91,13 @@ for sentence in llm.generate("你好，介绍一下你自己。", stream=True):
 
 # Audio2Face 3D (requires .[a2f])
 a2f = NvidiaAudio2Face3D.from_pretrained("path/to/audio2face-3d-model", use_cuda=True)
-weights = a2f.generate(audio_window)          # one 520ms window -> [51]
-frames = a2f.generate(audio, stream=True, is_final=True)  # sliding window -> list[[51]]
+frame = a2f.generate(audio_window)  # {"audio": [...], "arkit_weights": [51]}
+frames = a2f.generate(audio, stream=True, is_final=True)  # list[{"audio", "arkit_weights"}]
+
+# UE5 Live Link TCP rendering
+from respeak.models.nvidia_audio2face_3d import Ue5BlendshapeRenderer
+with Ue5BlendshapeRenderer(tcp_ip="127.0.0.1", tcp_port=12030) as renderer:
+    renderer.stream_frames(frames, realtime=True)
 ```
 
 New model types should live under `src/respeak/models/<name>/` (subclass `BaseModel`, expose `from_pretrained` / `generate`). Add matching tests under `tests/models/<name>/`.
@@ -124,12 +130,30 @@ python examples/qwen3_llm_streaming.py \
   --base-prompt path/to/base_prompt.md \
   --text "你好，介绍一下你自己。"
 
-# Audio2Face 3D (requires .[a2f])
+# Audio2Face 3D (requires .[a2f]; add --tensorrt with .[a2f-trt])
 python examples/nvidia_audio2face_3d_streaming.py \
   --model-dir path/to/audio2face-3d-v2.3.1-claire \
   --audio path/to/test.wav \
-  --output arkit_weights.npy
+  --output arkit_weights.npy \
+  --output-audio synced_audio.wav
+
+# Stream to UE5 Audio2Face plugin
+python examples/nvidia_audio2face_3d_streaming.py \
+  --model-dir path/to/audio2face-3d-v2.3.1-claire \
+  --audio path/to/test.wav \
+  --ue5-tcp-ip 127.0.0.1 \
+  --ue5-tcp-port 12030 \
+  --ue5-realtime
 ```
+
+**Audio2Face GPU backends**
+
+| Mode | Install | Run |
+|------|---------|-----|
+| CUDA (default) | `pip install "respeak-ai[a2f]"` | omit `--tensorrt` → `CUDAExecutionProvider` |
+| TensorRT | `pip install "respeak-ai[a2f-trt]"` | add `--tensorrt` → `TensorrtExecutionProvider` (first run builds TRT engine cache under model dir) |
+
+ORT 1.23 pairs with **TensorRT 10.9** (installed via the `a2f-trt` extra). Without the `tensorrt` pip package, `--tensorrt` falls back to CUDA automatically.
 
 ## Tests
 

@@ -70,7 +70,11 @@ llm = [
     "transformers",
 ]
 a2f = [
-    "onnxruntime",
+    "onnxruntime-gpu==1.23.2",
+]
+a2f-trt = [
+    "onnxruntime-gpu==1.23.2",
+    "tensorrt==10.9.0.34",
 ]
 
 [tool.setuptools.packages.find]
