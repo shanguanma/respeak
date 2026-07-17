@@ -1,0 +1,43 @@
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+
+# Build / packaging artifacts
+build/
+dist/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Local env files
+.env
+.env.*
+!.env.example
+
+# IDE / OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Runtime outputs
+output.wav
+*.log
+
+# Model checkpoints / large generated artifacts
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx

@@ -1,0 +1,84 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "respeak-ai"
+version = "0.1.5"
+description = "Modules required for conversation, released as a Python SDK."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "respeak contributors" },
+]
+keywords = ["asr", "tts", "vad", "speech", "respeak", "cosyvoice", "paraformer"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+dependencies = [
+    "numpy",
+    "funasr",
+]
+
+[project.urls]
+Homepage = "https://github.com/shanguanma/respeak"
+Repository = "https://github.com/shanguanma/respeak"
+Issues = "https://github.com/shanguanma/respeak/issues"
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+vad = [
+    "silero-vad",
+    "torch",
+]
+tts = [
+    "torch",
+    "torchaudio",
+    "vllm==0.11.0",
+    "hyperpyyaml",
+    "modelscope",
+    "librosa",
+    "scipy",
+    "onnxruntime",
+    "tqdm",
+    "openai-whisper",
+    "inflect",
+    "regex",
+    "omegaconf",
+    "einops",
+    "transformers==4.57.1",
+    "numpy==1.26.4",
+    "packaging",
+    "x-transformers",
+    "tiktoken",
+    "wetext",
+]
+llm = [
+    "modelscope",
+    "torch",
+    "transformers",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+respeak = [
+    "models/cosyvoice3_tts/data/*.wav",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
