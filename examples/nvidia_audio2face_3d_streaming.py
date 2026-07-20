@@ -59,15 +59,15 @@ def load_wav_mono(path: str, target_sr: int = 16000) -> np.ndarray:
     return audio.astype(np.float32, copy=False)
 
 
-def save_wav_mono(path: Path, audio: np.ndarray, sample_rate: int) -> None:
-    audio = np.clip(audio, -1.0, 1.0)
-    pcm = (audio * 32767.0).astype(np.int16)
+def save_wav_int16(path: Path, audio: np.ndarray, sample_rate: int) -> None:
+    """Save int16 PCM wav (same format as CosyVoice3Tts output)."""
+    audio = np.asarray(audio, dtype=np.int16)
     path.parent.mkdir(parents=True, exist_ok=True)
     with wave.open(str(path), "wb") as wf:
         wf.setnchannels(1)
         wf.setsampwidth(2)
         wf.setframerate(sample_rate)
-        wf.writeframes(pcm.tobytes())
+        wf.writeframes(audio.tobytes())
 
 
 def main() -> None:
@@ -86,9 +86,15 @@ def main() -> None:
     parser.add_argument(
         "--output-audio",
         default=None,
-        help="Optional path to save synced output audio as .wav",
+        help="Optional path to save synced int16 PCM as .wav",
     )
     parser.add_argument("--output-fps", type=int, default=25, help="Blendshape FPS")
+    parser.add_argument(
+        "--target-sr",
+        type=int,
+        default=16000,
+        help="Output audio sample rate (int16 PCM, same as CosyVoice3Tts)",
+    )
     parser.add_argument("--cpu", action="store_true", help="Force CPUExecutionProvider")
     parser.add_argument(
         "--tensorrt",
@@ -161,16 +167,24 @@ def main() -> None:
         is_final=True,
         return_dict=True,
         pad_to=args.pad_to,
+        target_sr=args.target_sr,
     )
     frames = result["frames"]
     if args.max_frames is not None:
         frames = frames[: args.max_frames]
 
-    synced_audio = np.concatenate([frame["audio"] for frame in frames], axis=0)
+    synced_audio = np.asarray(result["audio"], dtype=np.int16)
     weights = np.stack([frame["arkit_weights"] for frame in frames], axis=0)
+    queue_frames = 0
+    while not model.a2f_response_queue.empty():
+        chunk = model.a2f_response_queue.get_nowait()
+        queue_frames += 1
+        assert isinstance(chunk, bytes)
     print(
         f"Frames: {weights.shape[0]} @ {args.output_fps} FPS, "
-        f"weights_dim={weights.shape[1]}, synced_audio={synced_audio.shape[0]} samples"
+        f"weights_dim={weights.shape[1]}, "
+        f"synced_audio={synced_audio.shape[0]} samples @ {args.target_sr} Hz int16, "
+        f"response_queue_frames={queue_frames}"
     )
 
     for i, frame in enumerate(frames[: min(5, len(frames))]):
@@ -179,7 +193,7 @@ def main() -> None:
         max_idx = int(np.argmax(w[: len(pose_names)]))
         max_name = pose_names[max_idx] if max_idx < len(pose_names) else str(max_idx)
         print(
-            f"  frame {i:3d}: audio={frame['audio'].shape[0]} samples, "
+            f"  frame {i:3d}: audio={frame['audio'].shape[0]} int16 samples, "
             f"active={active}, max={max_name}={float(w[max_idx]):.3f}"
         )
 
@@ -191,7 +205,7 @@ def main() -> None:
 
     if args.output_audio:
         out_audio = Path(args.output_audio)
-        save_wav_mono(out_audio, synced_audio, model.sample_rate)
+        save_wav_int16(out_audio, synced_audio, args.target_sr)
         print(f"Saved synced audio: {out_audio}")
 
     if args.ue5_tcp_ip:

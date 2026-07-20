@@ -204,7 +204,15 @@ class NvidiaAudio2Face3DModelTest(ModelTesterMixin, unittest.TestCase):
         self.assertIn("audio", out)
         self.assertIn("pose_names", out)
         self.assertEqual(len(out["pose_names"]), _NUM_POSES)
+        self.assertEqual(out["audio"].dtype, np.int16)
+        self.assertEqual(out["sample_rate"], 16000)
         self.assertEqual(out["audio"].shape[0], model.step_samples)
+
+    def test_generate_accepts_int16_input(self):
+        model = self.model_tester.get_model()
+        pcm = (np.linspace(-0.5, 0.5, _BUFFER_LEN) * 32768.0).astype(np.int16)
+        out = model.generate(pcm, return_dict=True)
+        self.assertEqual(out["audio"].dtype, np.int16)
 
     def test_generate_synced_audio_stream(self):
         model = self.model_tester.get_model()
@@ -214,10 +222,24 @@ class NvidiaAudio2Face3DModelTest(ModelTesterMixin, unittest.TestCase):
         self.assertIsInstance(frames[0], dict)
         self.assertIn("audio", frames[0])
         self.assertIn("arkit_weights", frames[0])
+        self.assertEqual(frames[0]["audio"].dtype, np.int16)
         self.assertEqual(frames[0]["audio"].shape[0], model.step_samples)
         self.assertEqual(frames[0]["arkit_weights"].shape[0], _NUM_POSES)
         synced = np.concatenate([frame["audio"] for frame in frames], axis=0)
+        self.assertEqual(synced.dtype, np.int16)
         self.assertGreater(float(np.abs(synced).max()), 0.0)
+
+    def test_response_queue_emits_100ms_frames(self):
+        model = self.model_tester.get_model()
+        audio = np.linspace(-0.3, 0.3, 32000, dtype=np.float32)
+        model.generate(audio, stream=True, is_final=True, target_sr=16000)
+        queue_bytes = 0
+        while not model.Response_Queue.empty():
+            chunk = model.Response_Queue.get_nowait()
+            self.assertIsInstance(chunk, bytes)
+            self.assertEqual(len(chunk), 3200)  # 100 ms @ 16 kHz int16
+            queue_bytes += len(chunk)
+        self.assertGreater(queue_bytes, 0)
 
     def test_generate_stream_return_dict(self):
         model = self.model_tester.get_model()
@@ -226,6 +248,8 @@ class NvidiaAudio2Face3DModelTest(ModelTesterMixin, unittest.TestCase):
         self.assertIn("frames", out)
         self.assertIn("audio", out)
         self.assertIn("arkit_weights", out)
+        self.assertEqual(out["sample_rate"], 16000)
+        self.assertEqual(out["audio"].dtype, np.int16)
         self.assertEqual(out["audio"].shape[0], len(out["frames"]) * model.step_samples)
 
     def test_generate_pad_to(self):
