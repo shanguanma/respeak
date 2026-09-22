@@ -1,7 +1,7 @@
 # respeak
 
 Provides the modules required for conversation and is released as a Python SDK.
-
+add pull restrict rules again
 ## Install
 
 ```bash
@@ -91,8 +91,9 @@ for sentence in llm.generate("你好，介绍一下你自己。", stream=True):
 
 # Audio2Face 3D (requires .[a2f])
 a2f = NvidiaAudio2Face3D.from_pretrained("path/to/audio2face-3d-model", use_cuda=True)
-frame = a2f.generate(audio_window)  # {"audio": [...], "arkit_weights": [51]}
+frame = a2f.generate(audio_window)  # {"audio": int16[...], "arkit_weights": [51]}
 frames = a2f.generate(audio, stream=True, is_final=True)  # list[{"audio", "arkit_weights"}]
+# int16 PCM + 100 ms bytes in a2f.Response_Queue (same format as CosyVoice3Tts)
 
 # UE5 Live Link TCP rendering
 from respeak.models.nvidia_audio2face_3d import Ue5BlendshapeRenderer
