@@ -1,7 +1,7 @@
 # respeak
 
 Provides the modules required for conversation and is released as a Python SDK.
-add pull restrict rules
+add pull restrict rules again
 ## Install
 
 ```bash
